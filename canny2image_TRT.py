@@ -57,7 +57,7 @@ class hackathon():
             detected_map = HWC3(detected_map)
 
             control = torch.from_numpy(detected_map.copy()).float().cuda() / 255.0
-            control = torch.stack([control for _ in range(num_samples)], dim=0)
+            control = torch.stack([control for _ in range(num_samples)], dim=0)       #! num_samples的作用是啥？
             control = einops.rearrange(control, 'b h w c -> b c h w').clone()
 
             if seed == -1:
