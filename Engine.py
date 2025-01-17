@@ -84,6 +84,11 @@ class Engine():
             'latent': (self.batch_size, 4, self.latent_h, self.latent_w),
             'images': (self.batch_size, 3, self.latent_h * 8, self.latent_w * 8)
         }
+    def yolov5_model_shape_dict(self):
+        return {
+            'latent': (self.batch_size, 3, self.latent_h, self.latent_w),
+            'images': (self.batch_size, 3, self.latent_h * 8, self.latent_w * 8)
+        }
     def __del__(self):
         [buf.free() for buf in self.buffers.values() if isinstance(buf, cuda.DeviceArray) ]
         del self.engine

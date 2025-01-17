@@ -188,7 +188,7 @@ def export_control_net_model():
     #! 这四个输出分别从哪里来的？
     # 1. x_noisy 来自于 DDIMSampler.sample() 函数的 x_T 变量；
     # 2. hint 来自于 CannyDetector() 函数的 detected_map 变量；
-    #! 3. timestep 来自于 DDIMSampler.sample() 函数的 timesteps 变量；
+    #? 3. timestep 来自于 DDIMSampler.sample() 函数的 timesteps 变量；就是batchsize
     # 4. context 来自于 FrozenCLIPT5Encoder() 函数的 encode() 函数的输出；
     x_noisy  = torch.randn(1, 4, 32, 48, dtype=torch.float32)    #! shape: (1, 4, 32, 48) 代表啥意思 -> 代表输入图像的特征图；为啥是4？
     hint     = torch.randn(1, 3, 256, 384, dtype=torch.float32)  # shape: (1, 3, 256, 384) 代表啥意思 -> 代表输入图像的边缘图；
@@ -230,13 +230,14 @@ def export_control_net_model():
 def export_controlled_unet_model():
     controlled_unet_mdoel = hk.model.model.diffusion_model
 
-    #! controlnet和unet的联系？为什么会有相似的输入？
+    #? controlnet 和 unet 的联系？为什么会有相似的输入？
+    # controlnet: {"x_noisy":img, "hint":hint, "timestep":ts, "context":cond_txt}
+    # unet:       {'x_noisy': img, 'timestep': ts, 'context': cond_txt, 'control0': control[4], 'control1': control[5], 'control2': control[6], 'control3': control[7], 'control4': control[8], 'control5': control[9], 'control6': control[10], 'control7': control[11], 'control8': control[12], 'control9': control[13], 'control10': control[14], 'control11': control[15], 'control12': control[16]}
+    
     x_noisy = torch.randn(1, 4, 32, 48, dtype=torch.float32)
     timestep = torch.tensor([1], dtype=torch.int32)
     context = torch.randn(1, 77, 768, dtype=torch.float32)
 
-    # control_list的作用？
-    
     # control 为一个list 里面为tensor 13个
     control_list = [
         torch.randn(1, 320, 32, 48, dtype=torch.float32),
@@ -261,6 +262,7 @@ def export_controlled_unet_model():
     output_names = ["latent"]
 
     #! 为什么ControlledUnet夹下存在大量的权重文件？
+    # 事实上真正的onnx模型很小，大部分是权重文件
     onnx_path = "./onnx/ControlledUnet"
     os.makedirs(onnx_path, exist_ok=True)
     onnx_path = onnx_path + "/ControlledUnet.onnx"

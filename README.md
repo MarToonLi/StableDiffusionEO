@@ -1,348 +1,295 @@
-# News: A nightly version of ControlNet 1.1 is released!
+# StableDiffusionEO
 
-[ControlNet 1.1](https://github.com/lllyasviel/ControlNet-v1-1-nightly) is released. Those new models will be merged to this repo after we make sure that everything is good.
+StableDiffusionEO项目源自[shenlan2017/TensorRT-StableDiffusion: The Project of the Model Deployment course on ShenLan College](https://github.com/shenlan2017/TensorRT-StableDiffusion)项目的export_onnx分支
 
-# Below is ControlNet 1.0
 
-Official implementation of [Adding Conditional Control to Text-to-Image Diffusion Models](https://arxiv.org/abs/2302.05543).
 
-ControlNet is a neural network structure to control diffusion models by adding extra conditions.
+## 本项目实现的内容
 
-![img](github_page/he.png)
+- [x] 案例：CNSD模型的torch-onnx-trt模型转换以及trt模型调用
 
-It copys the weights of neural network blocks into a "locked" copy and a "trainable" copy. 
+  - [x] 将CNSD模型的四个模型从torch模型转换为onnx模型；（**含检测torch和onnx模型输出差异的方法**）；
 
-The "trainable" one learns your condition. The "locked" one preserves your model. 
+    export_onnx_all.py
 
-Thanks to this, training with small dataset of image pairs will not destroy the production-ready diffusion models.
+  - [x] 将CNSD模型的四个模型从onnx模型转换成trt模型；
 
-The "zero convolution" is 1×1 convolution with both weight and bias initialized as zeros. 
+    onnx2trt_static.py
 
-Before training, all zero convolutions output zeros, and ControlNet will not cause any distortion.
+  - [x] CNSD模型基于pytorch源码进行运行。
 
-No layer is trained from scratch. You are still fine-tuning. Your original model is safe. 
+    当cldm文件夹复制为cldm_torch文件夹，ldm文件夹复制为ldm_torch文件夹时，项目从compute_score.py作为入口，将基于pytorch模型进行运行；
 
-This allows training on small-scale or even personal devices.
+  - [x] CNSD模型基于trt模型进行运行。
 
-This is also friendly to merge/replacement/offsetting of models/weights/blocks/layers.
+    当cldm文件夹复制为cldm_trt文件夹，ldm文件夹复制为ldm_trt文件夹时，项目从compute_score.py作为入口，将基于trt模型进行运行；
 
-### FAQ
+- [x] 案例：YOLOV5模型的torch-onnx-trt模型转换以及trt模型调用
 
-**Q:** But wait, if the weight of a conv layer is zero, the gradient will also be zero, and the network will not learn anything. Why "zero convolution" works?
+  - [x] ~~将模型的四个模型从torch模型转换为onnx模型~~；
 
-**A:** This is not true. [See an explanation here](docs/faq.md).
+    practice_yolov5\export_onnx_yolov5.py 
 
-# Stable Diffusion + ControlNet
+    （鉴于本项目不包含yolov5源码，暂舍去该实现，📕**不过需要注意onnx生成时的inputname和outputname**）
 
-By repeating the above simple structure 14 times, we can control stable diffusion in this way:
+  - [x] 将YOLOV5模型的四个模型从onnx模型转换成trt模型
 
-![img](github_page/sd.png)
+    practice_yolov5\onnx2trt_static_yolov5.py
 
-In this way, the ControlNet can **reuse** the SD encoder as a **deep, strong, robust, and powerful backbone** to learn diverse controls. Many evidences (like [this](https://jerryxu.net/ODISE/) and [this](https://vpd.ivg-research.xyz/)) validate that the SD encoder is an excellent backbone.
+  - [x] 检测onnx和trt模型输出差异的方法。
 
-Note that the way we connect layers is computational efficient. The original SD encoder does not need to store gradients (the locked original SD Encoder Block 1234 and Middle). The required GPU memory is not much larger than original SD, although many layers are added. Great!
+    practice_yolov5\trt_yolov5.py
 
-# Features & News
+    - **含trt模型和onnx模型初始化方法；**
+    - **含trt模型和onnx模型调用方法；**
+    - 含数据预处理操作；（PreProcessor）
+    - 含数据后处理操作；（PostProcessor）
+    - 含检测onnx和trt模型输出差异的方法；（check_onnx_trt_outputs）
 
-2023/0/14 - We released [ControlNet 1.1](https://github.com/lllyasviel/ControlNet-v1-1-nightly). Those new models will be merged to this repo after we make sure that everything is good.
+    
 
-2023/03/03 - We released a discussion - [Precomputed ControlNet: Speed up ControlNet by 45%, but is it necessary?](https://github.com/lllyasviel/ControlNet/discussions/216)
+## 知识点汇总
 
-2023/02/26 - We released a blog - [Ablation Study: Why ControlNets use deep encoder? What if it was lighter? Or even an MLP?](https://github.com/lllyasviel/ControlNet/discussions/188)
+### CNSD模型结构
 
-2023/02/20 - Implementation for non-prompt mode released. See also [Guess Mode / Non-Prompt Mode](#guess-anchor).
+![image-20250117134510563](README.assets/image-20250117134510563.png)
 
-2023/02/12 - Now you can play with any community model by [Transferring the ControlNet](https://github.com/lllyasviel/ControlNet/discussions/12).
 
-2023/02/11 - [Low VRAM mode](docs/low_vram.md) is added. Please use this mode if you are using 8GB GPU(s) or if you want larger batch size.
 
-# Production-Ready Pretrained Models
+### ONNX模型初始化和调用方法
 
-First create a new conda environment
+```python
+# onnx模型初始化
+input_dicts = {"images":image_tensor.numpy()}
+sess = rt.InferenceSession(onnx_path) 
+# onnx模型调用
+outputs_onnx = sess.run(None, input_dicts)[0]             
+```
 
-    conda env create -f environment.yaml
-    conda activate control
 
-All models and detectors can be downloaded from [our Hugging Face page](https://huggingface.co/lllyasviel/ControlNet). Make sure that SD models are put in "ControlNet/models" and detectors are put in "ControlNet/annotator/ckpts". Make sure that you download all necessary pretrained weights and detector models from that Hugging Face page, including HED edge detection model, Midas depth estimation model, Openpose, and so on. 
 
-We provide 9 Gradio apps with these models.
+### TRT模型转换
 
-All test images can be found at the folder "test_imgs".
+```python
+def onnx2trt(onnxFile, plan_name, min_shapes, opt_shapes, max_shapes, max_workspace_size = None, use_fp16=False, builder_opt_evel=None):
+    logger = trt.Logger(trt.Logger.VERBOSE)                                                         # create logger
+    builder = trt.Builder(logger)                                                                   # create builder
+    config = builder.create_builder_config()                                                        # create config
+    network = builder.create_network(1<<int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))      # create network
+    
+    if max_workspace_size:                                                                          # init config
+        config.max_workspace_size = max_workspace_size
+    else:
+        config.max_workspace_size = 10<<30 # 10GB
 
-## ControlNet with Canny Edge
+    parser = trt.OnnxParser(network, logger)                                                         # create parser
+    if not os.path.exists(onnxFile):
+        print("Failed finding onnx file!")
+        exit()
+    print("Succeeded finding onnx file!")
+    with open(onnxFile, 'rb') as model:
+        # import pdb; pdb.set_trace()
+        (onnx_path, _) = os.path.split(onnxFile)
+        if not parser.parse(model.read(), path=onnxFile):                                            # parse onnx
+            print("Failed parsing ONNX file!")
+            for error in range(parser.num_errors):
+                print(parser.get_error(error))
+            exit()
+    print("Succeeded parsing ONNX file!")
 
-Stable Diffusion 1.5 + ControlNet (using simple Canny edge detection)
-
-    python gradio_canny2image.py
-
-The Gradio app also allows you to change the Canny edge thresholds. Just try it for more details.
-
-Prompt: "bird"
-![p](github_page/p1.png)
-
-Prompt: "cute dog"
-![p](github_page/p2.png)
-
-## ControlNet with M-LSD Lines
-
-Stable Diffusion 1.5 + ControlNet (using simple M-LSD straight line detection)
-
-    python gradio_hough2image.py
-
-The Gradio app also allows you to change the M-LSD thresholds. Just try it for more details.
-
-Prompt: "room"
-![p](github_page/p3.png)
-
-Prompt: "building"
-![p](github_page/p4.png)
-
-## ControlNet with HED Boundary
-
-Stable Diffusion 1.5 + ControlNet (using soft HED Boundary)
-
-    python gradio_hed2image.py
-
-The soft HED Boundary will preserve many details in input images, making this app suitable for recoloring and stylizing. Just try it for more details.
-
-Prompt: "oil painting of handsome old man, masterpiece"
-![p](github_page/p5.png)
-
-Prompt: "Cyberpunk robot"
-![p](github_page/p6.png)
-
-## ControlNet with User Scribbles
-
-Stable Diffusion 1.5 + ControlNet (using Scribbles)
-
-    python gradio_scribble2image.py
-
-Note that the UI is based on Gradio, and Gradio is somewhat difficult to customize. Right now you need to draw scribbles outside the UI (using your favorite drawing software, for example, MS Paint) and then import the scribble image to Gradio. 
-
-Prompt: "turtle"
-![p](github_page/p7.png)
-
-Prompt: "hot air balloon"
-![p](github_page/p8.png)
-
-### Interactive Interface
-
-We actually provide an interactive interface
-
-    python gradio_scribble2image_interactive.py
-
-~~However, because gradio is very [buggy](https://github.com/gradio-app/gradio/issues/3166) and difficult to customize, right now, user need to first set canvas width and heights and then click "Open drawing canvas" to get a drawing area. Please do not upload image to that drawing canvas. Also, the drawing area is very small; it should be bigger. But I failed to find out how to make it larger. Again, gradio is really buggy.~~ (Now fixed, will update asap)
-
-The below dog sketch is drawn by me. Perhaps we should draw a better dog for showcase.
-
-Prompt: "dog in a room"
-![p](github_page/p20.png)
-
-## ControlNet with Fake Scribbles
-
-Stable Diffusion 1.5 + ControlNet (using fake scribbles)
-
-    python gradio_fake_scribble2image.py
-
-Sometimes we are lazy, and we do not want to draw scribbles. This script use the exactly same scribble-based model but use a simple algorithm to synthesize scribbles from input images.
-
-Prompt: "bag"
-![p](github_page/p9.png)
-
-Prompt: "shose" (Note that "shose" is a typo; it should be "shoes". But it still seems to work.)
-![p](github_page/p10.png)
-
-## ControlNet with Human Pose
-
-Stable Diffusion 1.5 + ControlNet (using human pose)
-
-    python gradio_pose2image.py
-
-Apparently, this model deserves a better UI to directly manipulate pose skeleton. However, again, Gradio is somewhat difficult to customize. Right now you need to input an image and then the Openpose will detect the pose for you.
-
-Prompt: "Chief in the kitchen"
-![p](github_page/p11.png)
-
-Prompt: "An astronaut on the moon"
-![p](github_page/p12.png)
-
-## ControlNet with Semantic Segmentation
-
-Stable Diffusion 1.5 + ControlNet (using semantic segmentation)
-
-    python gradio_seg2image.py
-
-This model use ADE20K's segmentation protocol. Again, this model deserves a better UI to directly draw the segmentations. However, again, Gradio is somewhat difficult to customize. Right now you need to input an image and then a model called Uniformer will detect the segmentations for you. Just try it for more details.
-
-Prompt: "House"
-![p](github_page/p13.png)
-
-Prompt: "River"
-![p](github_page/p14.png)
-
-## ControlNet with Depth
-
-Stable Diffusion 1.5 + ControlNet (using depth map)
-
-    python gradio_depth2image.py
-
-Great! Now SD 1.5 also have a depth control. FINALLY. So many possibilities (considering SD1.5 has much more community models than SD2).
-
-Note that different from Stability's model, the ControlNet receive the full 512×512 depth map, rather than 64×64 depth. Note that Stability's SD2 depth model use 64*64 depth maps. This means that the ControlNet will preserve more details in the depth map.
-
-This is always a strength because if users do not want to preserve more details, they can simply use another SD to post-process an i2i. But if they want to preserve more details, ControlNet becomes their only choice. Again, SD2 uses 64×64 depth, we use 512×512.
-
-Prompt: "Stormtrooper's lecture"
-![p](github_page/p15.png)
-
-## ControlNet with Normal Map
-
-Stable Diffusion 1.5 + ControlNet (using normal map)
-
-    python gradio_normal2image.py
-
-This model use normal map. Rightnow in the APP, the normal is computed from the midas depth map and a user threshold (to determine how many area is background with identity normal face to viewer, tune the "Normal background threshold" in the gradio app to get a feeling).
-
-Prompt: "Cute toy"
-![p](github_page/p17.png)
-
-Prompt: "Plaster statue of Abraham Lincoln"
-![p](github_page/p18.png)
-
-Compared to depth model, this model seems to be a bit better at preserving the geometry. This is intuitive: minor details are not salient in depth maps, but are salient in normal maps. Below is the depth result with same inputs. You can see that the hairstyle of the man in the input image is modified by depth model, but preserved by the normal model. 
-
-Prompt: "Plaster statue of Abraham Lincoln"
-![p](github_page/p19.png)
-
-## ControlNet with Anime Line Drawing
-
-We also trained a relatively simple ControlNet for anime line drawings. This tool may be useful for artistic creations. (Although the image details in the results is a bit modified, since it still diffuse latent images.)
-
-This model is not available right now. We need to evaluate the potential risks before releasing this model. Nevertheless, you may be interested in [transferring the ControlNet to any community model](https://github.com/lllyasviel/ControlNet/discussions/12).
-
-![p](github_page/p21.png)
-
-<a id="guess-anchor"></a>
-
-# Guess Mode / Non-Prompt Mode
-
-The "guess mode" (or called non-prompt mode) will completely unleash all the power of the very powerful ControlNet encoder. 
-
-See also the blog - [Ablation Study: Why ControlNets use deep encoder? What if it was lighter? Or even an MLP?](https://github.com/lllyasviel/ControlNet/discussions/188)
-
-You need to manually check the "Guess Mode" toggle to enable this mode.
-
-In this mode, the ControlNet encoder will try best to recognize the content of the input control map, like depth map, edge map, scribbles, etc, even if you remove all prompts.
-
-**Let's have fun with some very challenging experimental settings!**
-
-**No prompts. No "positive" prompts. No "negative" prompts. No extra caption detector. One single diffusion loop.**
-
-For this mode, we recommend to use 50 steps and guidance scale between 3 and 5.
-
-![p](github_page/uc2a.png)
-
-No prompts:
-
-![p](github_page/uc2b.png)
-
-Note that the below example is 768×768. No prompts. No "positive" prompts. No "negative" prompts.
-
-![p](github_page/uc1.png)
-
-By tuning the parameters, you can get some very intereting results like below:
-
-![p](github_page/uc3.png)
-
-Because no prompt is available, the ControlNet encoder will "guess" what is in the control map. Sometimes the guess result is really interesting. Because diffusion algorithm can essentially give multiple results, the ControlNet seems able to give multiple guesses, like this:
-
-![p](github_page/uc4.png)
-
-Without prompt, the HED seems good at generating images look like paintings when the control strength is relatively low:
-
-![p](github_page/uc6.png)
-
-The Guess Mode is also supported in [WebUI Plugin](https://github.com/Mikubill/sd-webui-controlnet):
-
-![p](github_page/uci1.png)
-
-No prompts. Default WebUI parameters. Pure random results with the seed being 12345. Standard SD1.5. Input scribble is in "test_imgs" folder to reproduce.
-
-![p](github_page/uci2.png)
-
-Below is another challenging example:
-
-![p](github_page/uci3.png)
-
-No prompts. Default WebUI parameters. Pure random results with the seed being 12345. Standard SD1.5. Input scribble is in "test_imgs" folder to reproduce.
-
-![p](github_page/uci4.png)
-
-Note that in the guess mode, you will still be able to input prompts. The only difference is that the model will "try harder" to guess what is in the control map even if you do not provide the prompt. Just try it yourself!
-
-Besides, if you write some scripts (like BLIP) to generate image captions from the "guess mode" images, and then use the generated captions as prompts to diffuse again, you will get a SOTA pipeline for fully automatic conditional image generating.
-
-# Combining Multiple ControlNets
-
-ControlNets are composable: more than one ControlNet can be easily composed to multi-condition control.
-
-Right now this feature is in experimental stage in the [Mikubill' A1111 Webui Plugin](https://github.com/Mikubill/sd-webui-controlnet):
-
-![p](github_page/multi2.png)
-
-![p](github_page/multi.png)
-
-As long as the models are controlling the same SD, the "boundary" between different research projects does not even exist. This plugin also allows different methods to work together!
-
-# Use ControlNet in Any Community Model (SD1.X)
-
-This is an experimental feature.
-
-[See the steps here](https://github.com/lllyasviel/ControlNet/discussions/12).
-
-Or you may want to use the [Mikubill' A1111 Webui Plugin](https://github.com/Mikubill/sd-webui-controlnet) which is plug-and-play and does not need manual merging.
-
-# Annotate Your Own Data
-
-We provide simple python scripts to process images.
-
-[See a gradio example here](docs/annotator.md).
-
-# Train with Your Own Data
-
-Training a ControlNet is as easy as (or even easier than) training a simple pix2pix. 
-
-[See the steps here](docs/train.md).
-
-# Related Resources
-
-Special Thank to the great project - [Mikubill' A1111 Webui Plugin](https://github.com/Mikubill/sd-webui-controlnet) !
-
-We also thank Hysts for making [Hugging Face Space](https://huggingface.co/spaces/hysts/ControlNet) as well as more than 65 models in that amazing [Colab list](https://github.com/camenduru/controlnet-colab)! 
-
-Thank haofanwang for making [ControlNet-for-Diffusers](https://github.com/haofanwang/ControlNet-for-Diffusers)!
-
-We also thank all authors for making Controlnet DEMOs, including but not limited to [fffiloni](https://huggingface.co/spaces/fffiloni/ControlNet-Video), [other-model](https://huggingface.co/spaces/hysts/ControlNet-with-other-models), [ThereforeGames](https://github.com/AUTOMATIC1111/stable-diffusion-webui/discussions/7784), [RamAnanth1](https://huggingface.co/spaces/RamAnanth1/ControlNet), etc!
-
-Besides, you may also want to read these amazing related works:
-
-[Composer: Creative and Controllable Image Synthesis with Composable Conditions](https://github.com/damo-vilab/composer): A much bigger model to control diffusion!
-
-[T2I-Adapter: Learning Adapters to Dig out More Controllable Ability for Text-to-Image Diffusion Models](https://github.com/TencentARC/T2I-Adapter): A much smaller model to control stable diffusion!
-
-[ControlLoRA: A Light Neural Network To Control Stable Diffusion Spatial Information](https://github.com/HighCWu/ControlLoRA): Implement Controlnet using LORA!
-
-And these amazing recent projects: [InstructPix2Pix Learning to Follow Image Editing Instructions](https://www.timothybrooks.com/instruct-pix2pix), [Pix2pix-zero: Zero-shot Image-to-Image Translation](https://github.com/pix2pixzero/pix2pix-zero), [Plug-and-Play Diffusion Features for Text-Driven Image-to-Image Translation](https://github.com/MichalGeyer/plug-and-play), [MaskSketch: Unpaired Structure-guided Masked Image Generation](https://arxiv.org/abs/2302.05496), [SEGA: Instructing Diffusion using Semantic Dimensions](https://arxiv.org/abs/2301.12247), [Universal Guidance for Diffusion Models](https://github.com/arpitbansal297/Universal-Guided-Diffusion), [Region-Aware Diffusion for Zero-shot Text-driven Image Editing](https://github.com/haha-lisa/RDM-Region-Aware-Diffusion-Model), [Domain Expansion of Image Generators](https://arxiv.org/abs/2301.05225), [Image Mixer](https://twitter.com/LambdaAPI/status/1626327289288957956), [MultiDiffusion: Fusing Diffusion Paths for Controlled Image Generation](https://multidiffusion.github.io/)
-
-# Citation
-
-    @misc{zhang2023adding,
-      title={Adding Conditional Control to Text-to-Image Diffusion Models}, 
-      author={Lvmin Zhang and Maneesh Agrawala},
-      year={2023},
-      eprint={2302.05543},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV}
-    }
-
-[Arxiv Link](https://arxiv.org/abs/2302.05543)
+    if use_fp16:                                                                                      # init config
+        config.set_flag(trt.BuilderFlag.FP16)
+        plan_name = plan_name.replace(".plan", "_fp16.plan")
+
+    if builder_opt_evel:
+        config.builder_optimization_level = builder_opt_evel
+
+    # set profile
+    assert network.num_inputs == len(min_shapes)
+    assert network.num_inputs == len(opt_shapes)
+    assert network.num_inputs == len(max_shapes)
+
+    profile = builder.create_optimization_profile()                                                   # create profile
+    for i in range(network.num_inputs):                                                               # set profile
+        input_tensor = network.get_input(i)
+        profile.set_shape(input_tensor.name, tuple(min_shapes[i]), tuple(opt_shapes[i]), tuple(max_shapes[i]))
+
+    config.add_optimization_profile(profile)                                                          # init config
+
+    engine = builder.build_engine(network, config)                                                    # create engine
+    if not engine:
+        raise RuntimeError("build_engine failed")
+    print("Succeeded building engine!")
+
+    print("Serializing Engine...")
+    serialized_engine = engine.serialize()                                                             # serialize engine
+    if serialized_engine is None:
+        raise RuntimeError("serialize failed")
+
+    (plan_path, _) = os.path.split(plan_name)
+    os.makedirs(plan_path, exist_ok=True)
+    with open(plan_name, "wb") as fout:
+        fout.write(serialized_engine)
+```
+
+
+
+### TRT模型初始化和调用方法
+
+```python
+# trt模型初始化
+clip_engine = engine_from_bytes(bytes_from_path(engine_path))
+model_feed_dict = {
+            'images': (1, 3, 1120, 1120),
+            'output0': (1, 77175, 14)
+        }
+context = clip_engine.create_execution_context()
+clip_engine.allocate_buffers(model_feed_dict)
+clip_engine.get_engine_infor()
+# trt模型调用
+outputs_trt = clip_engine.infer({"images":image_tensor})[onnx_names["output"]].cpu().detach().numpy()
+"""
+noerror = self.context.execute_async_v3(0)
+"""
+```
+
+![image-20250117134920795](README.assets/image-20250117134920795.png)
+
+
+
+```python
+
+class Engine():
+    def __init__(
+        self,
+        engine_path,
+    ):
+        self.engine_path = engine_path
+        self.engine = None
+        self.context = None
+        self.buffers = OrderedDict()
+        self.tensors = OrderedDict()
+        self.latent_h = 1120
+        self.latent_w = 1120
+        self.batch_size = 1
+        self.cuda_graph_instance = None # cuda graph
+        
+    def yolov5_model_shape_dict(self):
+        return {
+            'images': (self.batch_size, 3, self.latent_h, self.latent_w),
+            'output0': (self.batch_size, 77175, 14)
+        }
+    def __del__(self):
+        [buf.free() for buf in self.buffers.values() if isinstance(buf, cuda.DeviceArray) ]
+        del self.engine
+        del self.context
+        del self.buffers
+        del self.tensors
+
+    def load(self):
+        print(f"Loading TensorRT engine: {self.engine_path}")
+        self.engine = engine_from_bytes(bytes_from_path(self.engine_path))
+
+    def activate(self, reuse_device_memory=None):
+        """激活TensorRT引擎的执行上下文。
+        """
+        # 如果提供了 reuse_device_memory，则创建一个没有分配新设备内存的执行上下文，并将其设置为当前上下文
+        if reuse_device_memory:
+            self.context = self.engine.create_execution_context_without_device_memory()
+            self.context.device_memory = reuse_device_memory
+        else:  # 如果没有提供 reuse_device_memory，则创建一个新的执行上下文
+            self.context = self.engine.create_execution_context()
+
+    def allocate_buffers(self, shape_dict=None, device='cuda'):
+        """为 TensorRT 引擎分配输入和输出缓冲区。
+        """
+        # 遍历每个绑定（输入或输出）
+        for idx in range(trt_util.get_bindings_per_profile(self.engine)):
+            binding = self.engine[idx]                 # 获取绑定的名称
+            if shape_dict and binding in shape_dict:   # 如果提供了 shape_dict 并且绑定在 shape_dict 中，则使用 shape_dict 中的形状
+                shape = shape_dict[binding]
+            else:
+                shape = self.engine.get_binding_shape(binding)         # 否则，使用引擎的默认形状
+            dtype = trt.nptype(self.engine.get_binding_dtype(binding)) # 获取绑定的数据类型
+            if self.engine.binding_is_input(binding):        # 如果绑定是输入，则设置上下文的绑定形状
+                self.context.set_binding_shape(idx, shape)
+            tensor = torch.empty(tuple(shape), dtype=numpy_to_torch_dtype_dict[dtype]).to(device=device)
+            self.tensors[binding] = tensor                   # 将张量添加到 tensors 字典中，键为绑定的名称
+            
+    def get_engine_infor(self):
+        # 计算输入张量的数量
+        nInput = np.sum([self.engine.binding_is_input(i) for i in range(self.engine.num_bindings)])
+        # 计算输出张量的数量
+        nOutput = self.engine.num_bindings - nInput
+        # 获取输入张量的名称和形状
+        input_infor = dict((self.engine.get_tensor_name(i), self.context.get_binding_shape(i))  for i in range(nInput))
+        # 获取输出张量的名称和形状
+        ouput_infor = dict((self.engine.get_tensor_name(nInput + i), self.context.get_binding_shape(nInput + i))  for i in range(nOutput))
+        print("TensorRT engine infors -----------------")
+        print("engin nInput: ", nInput, ", Input shape: ", input_infor)
+        print("engin nOutput: ", nOutput, ", Outpu shape: ", ouput_infor)
+
+    def infer(self, feed_dict, stream=None, use_cuda_graph=False):
+        # import pdb; pdb.set_trace()
+        # 遍历 feed_dict 中的每个键值对，将值复制到对应的张量中
+        for name, buf in feed_dict.items():
+            self.tensors[name].copy_(buf)
+
+        # 遍历 tensors 中的每个键值对，设置张量的地址
+        for name, tensor in self.tensors.items():
+            self.context.set_tensor_address(name, tensor.data_ptr())
+
+        # 如果使用 CUDA 图优化
+        if use_cuda_graph:
+            
+            if self.cuda_graph_instance is not None:  # 如果已经有一个 CUDA 图实例
+                CUASSERT(cudart.cudaGraphLaunch(self.cuda_graph_instance, stream.ptr))  # 启动 CUDA 图实例
+                CUASSERT(cudart.cudaStreamSynchronize(stream.ptr))                      # 同步 CUDA 流
+            else:                                     # 如果没有 CUDA 图实例
+                # do inference before CUDA graph capture
+                noerror = self.context.execute_async_v3(stream.ptr)
+                if not noerror: raise ValueError(f"ERROR: inference failed.")   # 如果推理失败，抛出异常
+                # capture cuda graph
+                CUASSERT(cudart.cudaStreamBeginCapture(stream.ptr, cudart.cudaStreamCaptureMode.cudaStreamCaptureModeGlobal))                # 开始捕获 CUDA 流
+                self.context.execute_async_v3(stream.ptr)    # 执行推理
+                self.graph = CUASSERT(cudart.cudaStreamEndCapture(stream.ptr))   # 结束捕获 CUDA 流
+                self.cuda_graph_instance = CUASSERT(cudart.cudaGraphInstantiate(self.graph, 0))  # 实例化 CUDA 图
+        else:
+            if stream:
+                noerror = self.context.execute_async_v3(stream.ptr)
+            else:
+                noerror = self.context.execute_async_v3(0)
+            if not noerror:
+                raise ValueError(f"ERROR: inference failed.")
+
+        return self.tensors
+```
+
+
+
+### 检测模型转换前后输出差异
+
+```python
+## 以yolo为例
+# 1 模型输出 [bs, anchors_number, 5 + nc]
+ret = np.allclose(model_trt_outputs, model_onnx_outputs, rtol=1e-03, atol=1e-05, equal_nan=False)
+# 2 最终任务的输出结果 [bs, achors_number, 6]
+```
+
+
+
+
+
+## TODO
+
+- [ ] cuda和trt的语法体系比较欠缺；
+- [ ] YOLOV5模型结构
+- [ ] FP16优化的理论与实现方式；
+- [ ] cuda图优化的理论与实现方式；
+- [ ] buildoptimal的理论与实现方式；
+- [ ] pipeline优化的方面：迭代次数、拼batch、模型内部优化；
+- [ ] int8量化；
+- [ ] int4量化；
+- [ ] 深度优化；
+- [ ] 剪枝；
+- [ ] 蒸馏；
