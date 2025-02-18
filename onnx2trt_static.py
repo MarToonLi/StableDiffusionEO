@@ -110,18 +110,19 @@ def export_controlled_unet_model():
     onnx_path = "./onnx/ControlledUnet"
     onnx_path = onnx_path + "/ControlledUnet.onnx"
 
-    plan_path = "./engine/ControlledUnet.plan"
-
-    # onnx2trt(onnx_path, plan_path,
-             # get_shapes(1, 77),
-             # get_shapes(1, 77),
-             # get_shapes(1, 77))
+    plan_path = "./engine/ControlledUnet_test.plan"
 
     onnx2trt(onnx_path, plan_path,
              get_shapes(1, 77),
              get_shapes(1, 77),
-             get_shapes(1, 77),
-             use_fp16=True)
+             get_shapes(1, 77))
+
+    # 不允许不一致！
+    # onnx2trt(onnx_path, plan_path,
+    #          get_shapes(1, 10),
+    #          get_shapes(1, 77),
+    #          get_shapes(1, 128),
+    #          use_fp16=True)
 
     print("======================= ControlNet onnx2trt done!")
 
@@ -139,10 +140,10 @@ def export_decoder_model():
     print("======================= Decoder  onnx2trt done!")
 
 def main():
-    export_clip_model()
-    export_control_net_model()
+    # export_clip_model()
+    # export_control_net_model()
     export_controlled_unet_model()
-    export_decoder_model()
+    # export_decoder_model()
 
 if __name__ == '__main__':
     main()

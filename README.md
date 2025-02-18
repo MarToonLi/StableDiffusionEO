@@ -274,22 +274,64 @@ class Engine():
 # 1 模型输出 [bs, anchors_number, 5 + nc]
 ret = np.allclose(model_trt_outputs, model_onnx_outputs, rtol=1e-03, atol=1e-05, equal_nan=False)
 # 2 最终任务的输出结果 [bs, achors_number, 6]
+# 3 polygraph输出onnx和trt模型的每层输出（排查nan溢出时）
+# 4 
 ```
 
 
 
 
 
+### FP16优化的理论与实现方式
+
+
+
+
+
+### buildoptimal的理论与实现方式
+
+
+
+### cuda图优化的理论与实现方式
+
+
+
+### pipeline优化的方面：迭代次数、拼batch、模型内部优化
+
+
+
+### int8量化
+
+
+
+### 深度优化
+
+
+
 ## TODO
 
 - [ ] cuda和trt的语法体系比较欠缺；
+
 - [ ] YOLOV5模型结构
+
 - [ ] FP16优化的理论与实现方式；
+
+  
+
 - [ ] cuda图优化的理论与实现方式；
+
 - [ ] buildoptimal的理论与实现方式；
+
 - [ ] pipeline优化的方面：迭代次数、拼batch、模型内部优化；
+
 - [ ] int8量化；
+
 - [ ] int4量化；
-- [ ] 深度优化；
+
+- [ ] 深度优化
+
 - [ ] 剪枝；
+
 - [ ] 蒸馏；
+
+- [ ] 拼batch

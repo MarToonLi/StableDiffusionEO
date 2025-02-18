@@ -36,3 +36,9 @@ nvidia-pyindex
 onnx-graphsurgeon
 cuda-python
 polygraphy==0.47.1
+
+
+# 手动安装内容
+# git clone https://github.com/NVIDIA-AI-IOT/torch2trt
+# cd torch2trt
+# python setup.py install

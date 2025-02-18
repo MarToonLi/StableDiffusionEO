@@ -71,9 +71,9 @@ class Engine():
         }
     def controlunet_model_shape_dict(self):
         return {
-            'sample': (2*batch_size, self.unet_dim, latent_height, latent_width),
-            'encoder_hidden_states': (2*batch_size, self.text_maxlen, self.embedding_dim),
-            'latent': (2*batch_size, 4, latent_height, latent_width)
+            'sample': (2*self.batch_size, self.unet_dim, self.latent_height, self.latent_width),
+            'encoder_hidden_states': (2*self.batch_size, self.text_maxlen, self.embedding_dim),
+            'latent': (2*self.batch_size, 4, self.latent_height, self.latent_width)
         }
     def control_model_shape_dict(self):
         return {

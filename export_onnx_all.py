@@ -284,7 +284,7 @@ def export_controlled_unet_model():
         input_dicts["control" + str(i)] = control_list[i].numpy()
 
     # TODO: controlled_unet_mdoel will make control_list = [] 所以呢？
-    # 其他使用control_list的操作需要放置在controlled_unet_mdoel执行的前面
+    # 其他使用control_list的操作(比如input_dicts对control_list的使用)需要放置在controlled_unet_mdoel执行的前面
     output = controlled_unet_mdoel(x_noisy, timestep, context, control_list)
 
     onnxruntime_check(onnx_path, input_dicts, [output])
@@ -302,7 +302,7 @@ def export_decoder_model():
 
     latent = torch.randn(1, 4, 32, 48, dtype=torch.float32)
 
-    input_names = ["latent"]
+    input_names = ["latent"]                    # 输入名称最好与controlnet和unet的输出名称保持一致
     output_names = ["images"]
 
     onnx_path = "./onnx/Decoder.onnx"
@@ -333,7 +333,7 @@ def main():
     
     # export_clip_model()
     # export_control_net_model()
-    # export_controlled_unet_model()
+    export_controlled_unet_model()
     # export_decoder_model()
     
     # onnx_path = "./onnx/CLIP.onnx"

@@ -105,8 +105,8 @@ class TrtEngine():
 
     def activate(self, reuse_device_memory=None):
         if reuse_device_memory:
-            self.context = self.engine.create_execution_context_without_device_memory()
-            self.context.device_memory = reuse_device_memory
+            self.context = self.engine.create_execution_context_without_device_memory() #? 创建一个新的执行上下文，但不分配设备内存。
+            self.context.device_memory = reuse_device_memory  #? 为缓冲区设置为执行上下文的设备内存。
         else:
             self.context = self.engine.create_execution_context()
 
@@ -144,13 +144,15 @@ class TrtEngine():
         for name, tensor in self.tensors.items():
             self.context.set_tensor_address(name, tensor.data_ptr())
 
+        #? 该模块可以放在init函数中
         if use_cuda_graph:
             if self.cuda_graph_instance is not None:
                 CUASSERT(cudart.cudaGraphLaunch(self.cuda_graph_instance, stream.ptr))
                 CUASSERT(cudart.cudaStreamSynchronize(stream.ptr))
             else:
                 # do inference before CUDA graph capture
-                noerror = self.context.execute_async_v3(stream.ptr)
+                #? 这是TRT的特性，先执行一遍才能保证整个模型没问题；
+                noerror = self.context.execute_async_v3(stream.ptr)  
                 if not noerror:
                     raise ValueError(f"ERROR: inference failed.")
                 # capture cuda graph

@@ -148,5 +148,3 @@ if save_img_path_onnx is not None and os.path.exists(os.path.dirname(path)):
 
 ## ---------- 检查结果 ----------
 check_onnx_trt_outputs(outputs_onnx, outputs_trt, posted_result_onnx, posted_result_trt)
-
-    

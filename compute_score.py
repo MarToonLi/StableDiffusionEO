@@ -41,7 +41,7 @@ scores = []
 latencys = []
 hk = hackathon()
 hk.initialize()
-for i in range(10):
+for i in range(1):
     path = "./pictures_croped/bird_"+ str(i) + ".jpg"
     img = cv2.imread(path)
     start = datetime.datetime.now().timestamp()
@@ -51,7 +51,7 @@ for i in range(10):
             "longbody, lowres, bad anatomy, bad hands, missing fingers",
             1,
             256,
-            20,
+            1,
             False,
             1,
             9,
