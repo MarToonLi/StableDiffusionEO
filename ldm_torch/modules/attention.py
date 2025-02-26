@@ -154,6 +154,114 @@ class CrossAttention(nn.Module):
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        
+        
+        self.bool1 = False
+        self.bool2 = False
+        self.bool3 = False
+        
+        if context_dim != None: self.bool1 = True
+
+        # q.shape: inner_dim, query_dim; k.shape: inner_dim, context_dim; v.shape: inner_dim, context_dim;
+        
+        # add content =================
+        if context_dim == query_dim:  # context_dim == None
+            self.bool2 = True
+            self.qkv_w = torch.cat([self.to_q.weight, self.to_k.weight, self.to_v.weight]).transpose(0, 1).detach()
+        else:
+            self.bool3 = True
+            self.kv_w = torch.cat([self.to_k.weight, self.to_v.weight]).transpose(0, 1).detach()
+        # =============================
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, query_dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x, context=None, mask=None):
+        h = self.heads
+
+        # add content =================
+        if torch.onnx.is_in_onnx_export():
+            if context is None:
+                print("[export]: conext None: b bool1: {}; bool2: {}; bool3: {};".format(self.bool1, self.bool2, self.bool3))
+                print("[export]: conext None: i x:{}; context:{};".format(x.sum(), context.sum() if context is not None else 0))
+                qkv_w_s = torch.cat([self.to_q.weight, self.to_k.weight, self.to_v.weight]).transpose(0, 1).detach()
+                print("[export]: conext None: w self.qkv_w: {};".format(self.qkv_w.sum(), qkv_w_s.sum()))
+                print("[export]: conext None: w q:{}; k:{}; v:{};".format(self.to_q.weight.sum(), self.to_k.weight.sum(), self.to_v.weight.sum()))
+                
+                qkv = torch.matmul(x, self.qkv_w)
+                q, k, v = qkv.chunk(3, dim=-1)
+                print("[export]: conext None: s q:{}; k:{}; v:{};".format(q.sum(), k.sum(), v.sum()))
+            else:
+                print("[export]: conext not None: b bool1: {}; bool2: {}; bool3: {};".format(self.bool1, self.bool2, self.bool3))
+                print("[export]: conext not None: i x: {}; context: {};".format(x.sum(), context.sum() if context is not None else 0))
+                kv_w_s = torch.cat([self.to_k.weight, self.to_v.weight]).transpose(0, 1).detach()
+                print("[export]: conext not None: w self.kv_w: {}; kv_w_s: {};".format(self.kv_w.sum(), kv_w_s.sum()))
+                print("[export]: conext not None: w q:{}; k:{}; v:{};".format(self.to_q.weight.sum(), self.to_k.weight.sum(), self.to_v.weight.sum()))
+                
+                q = self.to_q(x)
+                kv = torch.matmul(context, self.kv_w)
+                k, v = kv.chunk(2, dim=-1)
+                print("[export]: conext not None: o q:{}; k:{}; v:{};".format(q.sum(), k.sum(), v.sum()))
+        else:
+            print("[train]: i x:{}; context:{};".format(x.sum(), context.sum() if context is not None else 0))
+            
+            if context is None:
+                qkv_w_s = torch.cat([self.to_q.weight, self.to_k.weight, self.to_v.weight]).transpose(0, 1).detach()
+                print("[train]: w self.qkv: {}; qkv_w_s: {};".format(self.qkv_w.sum(), qkv_w_s.sum()))
+            else:
+                kv_w_s = torch.cat([self.to_k.weight, self.to_v.weight]).transpose(0, 1).detach()
+                print("[train]: w self.kv: {}; kv_w_s: {};".format(self.kv_w.sum(), kv_w_s.sum()))
+            
+            q = self.to_q(x)
+            context = default(context, x)
+            k = self.to_k(context)
+            v = self.to_v(context)
+                
+            print("[train]: o q:{}; k:{}; v:{};".format(q.sum(), k.sum(), v.sum()))
+            print("[train]: w q:{}; k:{}; v:{};".format(self.to_q.weight.sum(), self.to_k.weight.sum(), self.to_v.weight.sum()))
+            print("[train]: w q + k + v: {};".format(self.to_q.weight.sum() + self.to_k.weight.sum() + self.to_v.weight.sum()))
+            
+            
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
+
+        # force cast to fp32 to avoid overflowing
+        if _ATTN_PRECISION =="fp32":
+            with torch.autocast(enabled=False, device_type = 'cuda'):
+                q, k = q.float(), k.float()
+                sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
+        else:
+            sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
+
+        del q, k
+
+        if exists(mask):
+            mask = rearrange(mask, 'b ... -> b (...)')
+            max_neg_value = -torch.finfo(sim.dtype).max
+            mask = repeat(mask, 'b j -> (b h) () j', h=h)
+            sim.masked_fill_(~mask, max_neg_value)
+
+        # attention, what we cannot get enough of
+        sim = sim.softmax(dim=-1)
+
+        out = einsum('b i j, b j d -> b i d', sim, v)
+        out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
+        return self.to_out(out)
+
+
+class CrossAttention_beifen(nn.Module):
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.):
+        super().__init__()
+        inner_dim = dim_head * heads
+        context_dim = default(context_dim, query_dim)
+
+        self.scale = dim_head ** -0.5
+        self.heads = heads
+
+        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
+        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
 
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, query_dim),
@@ -192,6 +300,7 @@ class CrossAttention(nn.Module):
         out = einsum('b i j, b j d -> b i d', sim, v)
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
+
 
 
 class MemoryEfficientCrossAttention(nn.Module):
@@ -339,4 +448,8 @@ class SpatialTransformer(nn.Module):
         if not self.use_linear:
             x = self.proj_out(x)
         return x + x_in
+
+
+
+
 

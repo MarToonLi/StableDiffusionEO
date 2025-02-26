@@ -5,7 +5,7 @@ from share import *
 
 import cv2
 import einops
-import gradio as gr
+# import gradio as gr
 import numpy as np
 import torch
 import random
@@ -94,8 +94,8 @@ def export_clip_model():
 
     clip_model.forward = types.MethodType(forward, clip_model)  # 更改torch模块的tensor入口函数
 
-    onnx_path = "./onnx/CLIP_work1.onnx"  # torch.onnx.export参数
-    opt_onnx_path = "./onnx/CLIP_work1_float32_opt.onnx"  # torch.onnx.export参数
+    onnx_path = "./onnx/CLIP_op21.onnx"  # torch.onnx.export参数
+    opt_onnx_path = "./onnx/CLIP_op21_opt.onnx"  # torch.onnx.export参数
 
     tokens = torch.zeros(1, 77, dtype=torch.int32)  # torch.onnx.export参数
     input_names = ["input_ids"]  # torch.onnx.export参数
@@ -107,7 +107,7 @@ def export_clip_model():
         (tokens),                      # 输入投入模型，通过trace记录输入走过的所有算子
         onnx_path,
         verbose=True,
-        opset_version=18,              # torch.onnx.export参数
+        opset_version=21,              # torch.onnx.export参数
         do_constant_folding=True,      # 常量折叠，将计算图中可以在编译时计算的常量表达式进行计算并作为常量节点嵌入到计算图中；属于推荐行为
         input_names=input_names,       #  input_names在模型只有一个输入时可以不显示指明；但是模型输入多个或者希望模型输入名称自定义时除外；不指定则是01234
         output_names=output_names,     # output_names在模型只有一个输出时可以不显示指明；但是模型输出多个或者希望模型输出名称自定义时除外；
@@ -135,6 +135,7 @@ def export_clip_model():
 
 def export_control_net_model():
     control_net = hk.model.control_model.cpu()
+    control_net.eval()
 
     # H 输入变量构造
     x_nosiy = torch.randn(1, 4, 32, 48, dtype=torch.float32)
@@ -142,14 +143,11 @@ def export_control_net_model():
     timestep = torch.tensor([1], dtype=torch.int32)
     context = torch.randn(1, 77, 768, dtype=torch.float32)
 
-    print(x_nosiy.numpy().flatten()[:10])
-
-
     input_names = ["x_nosiy", "hint", "timestep", "context"]
     output_names = ["latent"]
 
     # H onnx模型输出
-    onnx_path = "./onnx/ControlNet_work2.onnx"
+    onnx_path = "./onnx/ControlNet_work31.onnx"
 
     torch.onnx.export(
         control_net,
@@ -157,9 +155,8 @@ def export_control_net_model():
         onnx_path,
         verbose=True,
         opset_version=18,                      # torch.onnx.export参数
-        do_constant_folding=True,
         input_names=input_names,
-        keep_initializers_as_inputs=False
+        output_names=output_names,
     )
     print("======================= ControlNet model export onnx done!")
 
@@ -259,8 +256,8 @@ def export_decoder_model():
 
 
 def main():
-    export_clip_model()
-    # export_control_net_model()
+    # export_clip_model()
+    export_control_net_model()
     # export_controlled_unet_model()
     # export_decoder_model()
 

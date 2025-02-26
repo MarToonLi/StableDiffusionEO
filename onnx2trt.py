@@ -98,11 +98,11 @@ def export_control_net_model():
                 tuple([B]), 
                 (B, S, 768)]
 
-    onnx_path = "./onnx/ControlNet_work2.onnx"
-    plan_path = "./engine/ControlNet_base.plan"
+    onnx_path = "./onnx/ControlNet_work3.onnx"
+    plan_path = "./engine/ControlNet_work3.plan"
 
     # base: fp16
-    # onnx2trt(onnx_path, plan_path,get_shapes(1, 77),get_shapes(1, 77),get_shapes(1, 77),use_fp16=True)
+    onnx2trt(onnx_path, plan_path,get_shapes(1, 77),get_shapes(1, 77),get_shapes(1, 77),use_fp16=True)
 
     # build_level:
     # plan_path = "./engine/ControlNet_level0.plan"
@@ -145,13 +145,13 @@ def export_control_net_model():
     #         use_fp16=True,
     #         builder_opt_evel=4)
     
-    plan_path = "./engine/ControlNet_level5.plan"
-    onnx2trt(onnx_path, plan_path,
-            get_shapes(1, 77),
-            get_shapes(1, 77),
-            get_shapes(1, 77),
-            use_fp16=True,
-            builder_opt_evel=5)
+    # plan_path = "./engine/ControlNet_level5.plan"
+    # onnx2trt(onnx_path, plan_path,
+    #         get_shapes(1, 77),
+    #         get_shapes(1, 77),
+    #         get_shapes(1, 77),
+    #         use_fp16=True,
+    #         builder_opt_evel=5)
     
     print("======================= ControlNet onnx2trt done!")
 
@@ -230,8 +230,8 @@ def export_decoder_model():
     print("======================= Decoder  onnx2trt done!")
 
 def main():
-    export_clip_model()
-    # export_control_net_model()
+    # export_clip_model()
+    export_control_net_model()
     # export_controlled_unet_model()
     # export_decoder_model()
 

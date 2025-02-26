@@ -1,12 +1,14 @@
+import os
+
 import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
-from Engine import Engine
+
 from transformers import T5Tokenizer, T5EncoderModel, CLIPTokenizer, CLIPTextModel
 
 import open_clip
 from ldm.util import default, count_params
-import os
+
 
 class AbstractEncoder(nn.Module):
     def __init__(self):
@@ -59,8 +61,8 @@ class FrozenT5Embedder(AbstractEncoder):
     """Uses the T5 transformer encoder for text"""
     def __init__(self, version="google/t5-v1_1-large", device="cuda", max_length=77, freeze=True):  # others are google/t5-v1_1-xl and google/t5-v1_1-xxl
         super().__init__()
-        self.tokenizer = T5Tokenizer.from_pretrained(version)
-        self.transformer = T5EncoderModel.from_pretrained(version)
+        self.tokenizer = T5Tokenizer.from_pretrained(version, cache_dir="./models")
+        self.transformer = T5EncoderModel.from_pretrained(version, cache_dir="./models")
         self.device = device
         self.max_length = max_length   # TODO: typical value?
         if freeze:
@@ -96,10 +98,12 @@ class FrozenCLIPEmbedder(AbstractEncoder):
                  freeze=True, layer="last", layer_idx=None):  # clip-vit-base-patch32
         super().__init__()
         assert layer in self.LAYERS
-        # self.tokenizer = CLIPTokenizer.from_pretrained(version)
-        # self.transformer = CLIPTextModel.from_pretrained(version)
         self.tokenizer = CLIPTokenizer.from_pretrained(version, cache_dir=os.getcwd() + "/models")
         self.transformer = CLIPTextModel.from_pretrained(version, cache_dir=os.getcwd() + "/models")
+
+        # self.tokenizer.save_pretrained("/data1/wgyang/play/shenlan/CNSD/ControlNet_bk/models")
+        # self.transformer.save_pretrained("/data1/wgyang/play/shenlan/CNSD/ControlNet_bk/models")
+
         self.device = device
         self.max_length = max_length
         if freeze:
@@ -109,19 +113,7 @@ class FrozenCLIPEmbedder(AbstractEncoder):
         if layer == "hidden":
             assert layer_idx is not None
             assert 0 <= abs(layer_idx) <= 12
-        self.clip_trt_infer = True
-        clip_engine_path = "/data/Projects/StableDiffusionEO/engine/CLIP_work1_int32_optxxx.plan"
-        if not os.path.exists(clip_engine_path):
-            self.clip_trt_infer = False
-        if self.clip_trt_infer:
-            self.clip_engine = Engine(clip_engine_path)
-            self.clip_engine.load()
-            #print("engine {} load".format(engine_path))
-            model_feed_dict = self.clip_engine.clip_model_shape_dict(1, self.max_length, embedding_dim = 768)
-            self.clip_engine.activate()
-            self.clip_engine.allocate_buffers(model_feed_dict)
-            print("clip_engine context load")
-            self.clip_engine.get_engine_infor()
+
     def freeze(self):
         self.transformer = self.transformer.eval()
         #self.train = disabled_train
@@ -129,23 +121,19 @@ class FrozenCLIPEmbedder(AbstractEncoder):
             param.requires_grad = False
 
     def forward(self, text):
-        #pdb.set_trace()
         batch_encoding = self.tokenizer(text, truncation=True, max_length=self.max_length, return_length=True,
                                         return_overflowing_tokens=False, padding="max_length", return_tensors="pt")
         tokens = batch_encoding["input_ids"].to(self.device)
-        outputs_torch = self.transformer(input_ids=tokens, output_hidden_states=self.layer=="hidden")
+        outputs = self.transformer(input_ids=tokens, output_hidden_states=self.layer=="hidden")
 
-        if self.clip_trt_infer:
-            tokens = tokens.int()  # int64 -> int32
-            outputs_trt = self.clip_engine.infer({"input_ids":tokens})['last_hidden_state'].clone()
-            # print(outputs_trt)
-            return outputs_trt
-        else:
-            outputs_torch = self.transformer(input_ids=tokens, output_hidden_states=self.layer=="hidden")
-        # import pdb; pdb.set_trace()
+        if 0:
+            self.transformer.half()
+            import pdb; pdb.set_trace()
+            out = self.transformer(tokens)
+            print(out)
+
         if self.layer == "last":
-            z = outputs_torch.last_hidden_state
-            #z = outputs_trt
+            z = outputs.last_hidden_state
         elif self.layer == "pooled":
             z = outputs.pooler_output[:, None, :]
         else:
@@ -234,4 +222,5 @@ class FrozenCLIPT5Encoder(AbstractEncoder):
         clip_z = self.clip_encoder.encode(text)
         t5_z = self.t5_encoder.encode(text)
         return [clip_z, t5_z]
+
 

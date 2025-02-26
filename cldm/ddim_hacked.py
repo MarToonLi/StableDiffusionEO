@@ -3,12 +3,9 @@
 import torch
 import numpy as np
 from tqdm import tqdm
-import os
-from Engine import Engine
-from polygraphy import cuda
+
 from ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters, make_ddim_timesteps, noise_like, extract_into_tensor
 
-import time
 
 class DDIMSampler(object):
     def __init__(self, model, schedule="linear", **kwargs):
@@ -16,35 +13,7 @@ class DDIMSampler(object):
         self.model = model
         self.ddpm_num_timesteps = model.num_timesteps
         self.schedule = schedule
-        # self.make_schedule(ddim_num_steps=10, ddim_eta=0, verbose=False)
-        self.controlnet_trt = True
-        controlnet_engine_path = "/data/Projects/StableDiffusionEO/engine/ControlNet.plan"
-        if not os.path.exists(controlnet_engine_path):
-            self.controlnet_trt = False
-        if self.controlnet_trt:
-            self.controlnet_engine = Engine(controlnet_engine_path)
-            self.controlnet_engine.load()
-            print("engine {} load".format(controlnet_engine_path))
-            self.controlnet_engine.activate()
-            controlnet_shape_dict = self.controlnet_engine.control_model_shape_dict()
-            self.controlnet_engine.allocate_buffers(controlnet_shape_dict)
-            print("engine context load")
-            self.controlnet_engine.get_engine_infor()
-        self.controlunet_trt = True
-        unet_engine_path = "/data/Projects/StableDiffusionEO/engine/ControlledUnet.plan"
-        if not os.path.exists(unet_engine_path):
-            self.controlunet_trt = False
-        if self.controlunet_trt:
-            self.unet_engine = Engine(unet_engine_path)
-            self.unet_engine.load()
-            print("engine {} load".format(unet_engine_path))
-            self.unet_engine.activate()
-            self.unet_engine.allocate_buffers()
-            print("engine context load")
-            self.unet_engine.get_engine_infor()
-        self.cuda_graph_instance = None
-        self.stream1 = cuda.Stream()
-        self.stream2 = cuda.Stream()
+
     def register_buffer(self, name, attr):
         if type(attr) == torch.Tensor:
             if attr.device != torch.device("cuda"):
@@ -82,121 +51,6 @@ class DDIMSampler(object):
                         1 - self.alphas_cumprod / self.alphas_cumprod_prev))
         self.register_buffer('ddim_sigmas_for_original_num_steps', sigmas_for_original_sampling_steps)
 
-
-    @torch.no_grad()
-    # 它替代了torch版本中sample+ddim_sampling+p_sample_ddim三个函数，这个确实有点难实现
-    def sample_simple(self,
-               S,
-               batch_size,
-               shape,
-               conditioning=None,
-               callback=None,
-               normals_sequence=None,
-               img_callback=None,
-               quantize_x0=False,
-               eta=0.,
-               mask=None,
-               x0=None,
-               temperature=1.,
-               noise_dropout=0.,
-               score_corrector=None,
-               corrector_kwargs=None,
-               verbose=True,
-               x_T=None,
-               log_every_t=100,
-               unconditional_guidance_scale=1.,
-               unconditional_conditioning=None, # this has to come in the same format as the conditioning, # e.g. as encoded tokens, ...
-               dynamic_threshold=None,
-               ucg_schedule=None,
-               **kwargs
-               ):
-
-        self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)
-        # sampling
-        C, H, W = shape
-        device = torch.device("cuda")
-        img = torch.randn((batch_size, C, H, W), device=device)
-
-        intermediates = {'x_inter': [img], 'pred_x0': [img]}
-        time_range = np.flip(self.ddim_timesteps)
-        total_steps =  self.ddim_timesteps.shape[0]
-        
-        # total_steps = 1
-        print(f"Running DDIM Sampling with {total_steps} timesteps")
-
-        iterator = tqdm(time_range, desc='DDIM Sampler', total=total_steps)
-        for i, step in enumerate(iterator):
-            index = total_steps - i - 1
-            ts = torch.full((batch_size,), step, device=device, dtype=torch.long) #? 创建一个形状为 (batch_size,) 的张量，其中所有元素的值都为 step
-
-            # import pdb; pdb.set_trace()
-            # conditioning
-            if self.controlnet_trt and self.controlunet_trt:
-                hint = torch.cat(conditioning['c_concat'], 1)
-                cond_txt = torch.cat(conditioning['c_crossattn'], 1)
-                #if self.cuda_graph_instance is None:
-                   #cudart.cudaStreamBeginCapture(self.stream1.ptr, cudart.cudaStreamCaptureMode.cudaStreamCaptureModeGlobal)
-
-                torch.cuda.synchronize()
-                start_time = time.time()
-                control_trt_dict = self.controlnet_engine.infer({"x_noisy":img, "hint":hint, "timestep":ts, "context":cond_txt}, stream = self.stream1, use_cuda_graph=True)
-                torch.cuda.synchronize()
-                end_time = time.time()
-                # print(f"controlnet_engine time={(end_time-start_time)*1000}ms")
-                control = list(control_trt_dict.values())
-                input_dict = {'x_noisy': img, 'timestep': ts, 'context': cond_txt,
-                              'control0': control[4], 'control1': control[5], 'control2': control[6], 'control3': control[7],
-                              'control4': control[8], 'control5': control[9], 'control6': control[10], 'control7': control[11],
-                              'control8': control[12], 'control9': control[13], 'control10': control[14], 'control11': control[15],
-                              'control12': control[16]}
-                torch.cuda.synchronize()
-                start_time = time.time()
-                model_t = self.unet_engine.infer(input_dict, self.stream1, use_cuda_graph=True)['latent'].clone()
-                torch.cuda.synchronize()
-                end_time = time.time()
-                # print(f"unet_engine time={(end_time-start_time)*1000}ms")
-            else:
-                model_t = self.model.apply_model(img, ts, conditioning)
-            # unconditional_conditioning
-            if self.controlnet_trt and self.controlunet_trt:
-                hint = torch.cat(unconditional_conditioning['c_concat'], 1)
-                cond_txt = torch.cat(unconditional_conditioning['c_crossattn'], 1)
-                control_trt_dict = self.controlnet_engine.infer({"x_noisy":img, "hint":hint, "timestep":ts, "context":cond_txt}, stream = self.stream2, use_cuda_graph=True)
-                control = list(control_trt_dict.values())
-                input_dict = {'x_noisy': img, 'timestep': ts, 'context': cond_txt,
-                              'control0': control[4], 'control1': control[5], 'control2': control[6], 'control3': control[7],
-                              'control4': control[8], 'control5': control[9], 'control6': control[10], 'control7': control[11],
-                              'control8': control[12], 'control9': control[13], 'control10': control[14], 'control11': control[15],
-                              'control12': control[16]}
-                model_uncond = self.unet_engine.infer(input_dict, stream = self.stream2, use_cuda_graph=True)['latent'].clone()
-            else:
-                model_uncond = self.model.apply_model(img, ts, unconditional_conditioning)
-            self.stream1.synchronize()
-            self.stream2.synchronize()
-            model_output = model_uncond + unconditional_guidance_scale * (model_t - model_uncond)
-            e_t = model_output
-
-            # select parameters corresponding to the currently considered timestep
-            a_t = torch.full((batch_size, 1, 1, 1), self.ddim_alphas[index], device=device)
-            a_prev = torch.full((batch_size, 1, 1, 1), self.ddim_alphas_prev[index], device=device)
-            sigma_t = torch.full((batch_size, 1, 1, 1), self.ddim_sigmas[index], device=device)
-            sqrt_one_minus_at = torch.full((batch_size, 1, 1, 1), self.ddim_sqrt_one_minus_alphas[index],device=device)
-
-            # current prediction for x_0
-
-            pred_x0 = (img - sqrt_one_minus_at * e_t) / a_t.sqrt()
-
-            # direction pointing to x_t
-            dir_xt = (1. - a_prev - sigma_t**2).sqrt() * e_t
-            noise = sigma_t * noise_like(img.shape, device, False) * temperature
-            img = a_prev.sqrt() * pred_x0 + dir_xt + noise
-            #return x_prev, pred_x0
-
-            if index % log_every_t == 0 or index == total_steps - 1:
-                intermediates['x_inter'].append(img)
-                intermediates['pred_x0'].append(pred_x0)
-
-        return img, intermediates
     @torch.no_grad()
     def sample(self,
                S,
@@ -276,18 +130,16 @@ class DDIMSampler(object):
         device = self.model.betas.device
         b = shape[0]
         if x_T is None:
-            randn_device = torch.device("cuda")
-            img = torch.randn(shape, device = randn_device)
+            img = torch.randn(shape, device=device)
         else:
             img = x_T
-        if not img.is_cuda:
-            img = img.cuda()
-        #if timesteps is None:
-        #    timesteps = self.ddpm_num_timesteps if ddim_use_original_steps else self.ddim_timesteps
-        #elif timesteps is not None and not ddim_use_original_steps:
-        #    subset_end = int(min(timesteps / self.ddim_timesteps.shape[0], 1) * self.ddim_timesteps.shape[0]) - 1
-        #    timesteps = self.ddim_timesteps[:subset_end]
-        timesteps = self.ddim_timesteps
+
+        if timesteps is None:
+            timesteps = self.ddpm_num_timesteps if ddim_use_original_steps else self.ddim_timesteps
+        elif timesteps is not None and not ddim_use_original_steps:
+            subset_end = int(min(timesteps / self.ddim_timesteps.shape[0], 1) * self.ddim_timesteps.shape[0]) - 1
+            timesteps = self.ddim_timesteps[:subset_end]
+
         intermediates = {'x_inter': [img], 'pred_x0': [img]}
         time_range = reversed(range(0,timesteps)) if ddim_use_original_steps else np.flip(timesteps)
         total_steps = timesteps if ddim_use_original_steps else timesteps.shape[0]
@@ -298,8 +150,7 @@ class DDIMSampler(object):
         for i, step in enumerate(iterator):
             index = total_steps - i - 1
             ts = torch.full((b,), step, device=device, dtype=torch.long)
-            if not ts.is_cuda:
-                ts = ts.cuda()
+
             if mask is not None:
                 assert x0 is not None
                 img_orig = self.model.q_sample(x0, ts)  # TODO: deterministic forward pass?
@@ -339,7 +190,7 @@ class DDIMSampler(object):
             model_t = self.model.apply_model(x, t, c)
             model_uncond = self.model.apply_model(x, t, unconditional_conditioning)
             model_output = model_uncond + unconditional_guidance_scale * (model_t - model_uncond)
-            #import pdb
+
         if self.model.parameterization == "v":
             e_t = self.model.predict_eps_from_z_and_v(x, t, model_output)
         else:

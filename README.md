@@ -4,6 +4,17 @@ StableDiffusionEO项目源自[shenlan2017/TensorRT-StableDiffusion: The Project 
 
 
 
+
+## 项目配置
+```python
+pip install -r requirements.txt
+```
+或者使用docker
+```python
+docker pull shenlan2017/tensorrt-stable-diffusion:latest
+```
+
+
 ## 本项目实现的内容
 
 - [x] 案例：CNSD模型的torch-onnx-trt模型转换以及trt模型调用
@@ -46,7 +57,20 @@ StableDiffusionEO项目源自[shenlan2017/TensorRT-StableDiffusion: The Project 
     - 含数据后处理操作；（PostProcessor）
     - 含检测onnx和trt模型输出差异的方法；（check_onnx_trt_outputs）
 
-    
+
+
+## 作业需要注意的内容
+### 第五章--第一次作业
+
+
+### 第七章--第二次作业
+
+
+### 第八章--第三次作业
+内容：合并CrossAttention的qkv层
+注意：qkv层修改之后，在转换成onnx时，onnx_check函数会报与torch模型输出不一致的错误，是因为self.qkv_w和self.kv_w并没有出现在CNSD的持久化参数文件中，因此
+各个attention层中的q、k、v在模型初始化后，会经过持久化模型的修改；
+而其中的self.qkv_w和self.kv_w是在模型初始化后，由于之前的持久化模型中并不包含该参数，因此不会对该参数进行重写。    
 
 ## 知识点汇总
 
@@ -305,6 +329,9 @@ ret = np.allclose(model_trt_outputs, model_onnx_outputs, rtol=1e-03, atol=1e-05,
 
 
 ### 深度优化
+
+
+
 
 
 
