@@ -152,3 +152,6 @@ openai
 *.onnx
 *.engine
 *.plan
+courses/
+course/** 
+course/work/*
